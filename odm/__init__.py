@@ -5,6 +5,7 @@ Basic odm functions.
 
 import copy
 from datetime import datetime
+import logging
 
 from bson import ObjectId
 from pymongo import ReturnDocument
@@ -321,7 +322,7 @@ class BaseModel:
         """
 
         params = self.filter(params)
-        # print(params)
+        # logging.info(params)
         params["deleted_at"] = {"$exists": False}
 
         cursor = await self.db[self.collection_name].count(params)
@@ -332,7 +333,7 @@ class BaseModel:
         sort_query = self.sort_query(criteria, tuples=True)
         criteria = self.filter(criteria)
 
-        # print(criteria)
+        # logging.info(criteria)
         r = await self.db[self.collection_name].find_one_and_update(criteria, update,
                                                                     sort=sort_query,
                                                                     return_document=ReturnDocument.AFTER)
@@ -385,7 +386,7 @@ class BaseModel:
         key_array.sort()
         the_keys = dict()
         for k, val in enumerate(key_array):
-            # print(k)
+            # logging.info(k)
             key = key_array[k]
             the_keys[key] = []
 
@@ -660,7 +661,7 @@ class BaseModel:
             try:
                 result = await delete_bulk.execute()
             except Exception as bwe:
-                print("Error on manyToMany deletion bulk..")
+                logging.info("Error on manyToMany deletion bulk..")
             # insertion of current records
             cursor_insert = self.db[relation["joinCollection"]]
             insert_bulk = cursor_insert.initialize_ordered_bulk_op()
@@ -674,7 +675,7 @@ class BaseModel:
             try:
                 result = await insert_bulk.execute()
             except Exception as bwe:
-                print("Error on manyToMany insertion bulk..")
+                logging.info("Error on manyToMany insertion bulk..")
 
         if type(model[properti]) == dict and type(model[properti]) != list:
             item = model[properti]
@@ -693,7 +694,7 @@ class BaseModel:
         try:
             result = await bulk.execute()
         except Exception as bwe:
-            print("Error writing bulk..")
+            logging.info("Error writing bulk..")
 
         ops = []
         for i in result["upserted"]:
