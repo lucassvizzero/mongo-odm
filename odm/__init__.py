@@ -693,12 +693,12 @@ class BaseModel:
                 bulk.insert(item)
         try:
             result = await bulk.execute()
+            ops = []
+            for i in result["upserted"]:
+                ops.append(i["_id"])
         except Exception as bwe:
             logging.info("Error writing bulk..")
 
-        ops = []
-        for i in result["upserted"]:
-            ops.append(i["_id"])
         fetched = self.db[relation["model"](self.db).collection_name].find({
             '_id': {"$in": upserted}})
 
