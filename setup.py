@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='odm',
-    version='0.0.4',
+    version='0.0.5',
     description='Engine MongoDB',
     author='Lucas Ribeiro',
     author_email='lucas.ribeiro@gruponewway.com.br',
