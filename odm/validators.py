@@ -4,8 +4,62 @@ It serves as an base to all other validators childs.
 """
 
 from datetime import datetime
-
+import jsonschema
+from jsonschema import Draft4Validator
 from bson.objectid import ObjectId
+
+_types = {
+    'object_id': ObjectId
+}
+
+
+class ValidationError(Exception):
+    def __init__(self, *args, errors: list=None, messages: list=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.messages = messages
+        self.errors = errors
+
+
+class JsonSchemaValidator():
+    TYPES = _types
+    SCHEMA = dict()
+    VALIDATOR = None
+
+    def __init__(self, schema: dict, additional_types: dict=None, **kwargs):
+        """
+        Arguments:
+            schema {dict} -- valida jsonschema
+        Keyword Arguments:
+            additional_types {dict} -- additional types to be checked against (default: {None})
+        """
+
+        self.SCHEMA = schema
+        if additional_types:
+            self.TYPES = dict(self.TYPES, **additional_types)
+        self.VALIDATOR = Draft4Validator(self.SCHEMA, types=self.TYPES)
+        self.VALIDATOR.VALIDATORS['method'] = self.__method
+
+    def __method(self, validator, fn, instance, schema):
+        try:
+            fn(instance, validator=validator)
+        except Exception as e:
+            yield ValidationError("%r failed for %r: %r" % (instance, fn.__name__, e))
+
+    def validate(self, instance):
+        messages = list()
+        errors = list()
+        for e in self.VALIDATOR.iter_errors(instance):
+            errors.append(e)
+            messages.append(e.schema.get('description', e.message))
+        if len(errors):
+            msg = '\n'.join(messages)
+            raise ValidationError(msg, messages=messages, errors=errors)
+        return True
+
+def validate_once(instance, schema, additional_types: dict=None, **kwargs):
+    validator = JsonSchemaValidator(schema, additional_types=additional_types, **kwargs)
+    validator.validate(instance)
+    return True
 
 
 class BaseValidator:

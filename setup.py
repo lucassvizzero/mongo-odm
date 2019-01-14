@@ -4,13 +4,16 @@ from setuptools import setup, find_packages
 
 setup(
     name='odm',
-    version='0.0.5',
+    version='0.1.0',
     description='Engine MongoDB',
-    author='Lucas Ribeiro',
-    author_email='lucas.ribeiro@gruponewway.com.br',
+    author='Grupo New Way',
+    author_email='contato@gruponewway.com.br',
     python_requires='>=3.6',
     classifiers=['Programming Language :: Python :: 3.6'],
     packages=find_packages(),
-    url='https://bitbucket.org/newway-ondemand/skjold',
-    install_requires=['pymongo>=3.7.0']
+    url='https://git.newwaycorp.io/libraries/python/mongo-odm',
+    install_requires=[
+        'pymongo>=3.7.0',
+        'jsonschema>=2.6.0'
+    ]
 )
