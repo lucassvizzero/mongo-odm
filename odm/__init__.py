@@ -155,8 +155,17 @@ class BaseModel:
                     query[name] = ObjectId(param)
 
                 elif self.fields[name] == Types.ISODate:
-                    query[name] = datetime.strptime(
-                        param[:19], "%Y-%m-%dT%H:%M:%S")
+                    if isinstance(param, str):
+                        query[name] = datetime.strptime(
+                            param[:19], "%Y-%m-%dT%H:%M:%S"
+                        )
+                    elif isinstance(param, datetime):
+                        query[name] = param
+                    else:
+                        raise Exception('wrong type [{}] for {}'.format(
+                            type(param),
+                            name
+                        ))
 
                 elif self.fields[name] == Types.Object:
                     query[name] = param
@@ -198,7 +207,10 @@ class BaseModel:
                     query[name] = str(param)
 
                 elif fields[name] == Types.ISODate:
-                    query[name] = param.isoformat() + 'Z'
+                    if isinstance(param, str):
+                        query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
+                    else:
+                        query[name] = param.isoformat() + 'Z'
 
                 elif fields[name] == Types.Object:
                     query[name] = param
@@ -332,6 +344,9 @@ class BaseModel:
 
         sort_query = self.sort_query(criteria, tuples=True)
         criteria = self.filter(criteria)
+
+        # remove _id from $set operation if it exists 
+        update.get('$set', dict()).pop('_id', None)
 
         # logging.info(criteria)
         r = await self.db[self.collection_name].find_one_and_update(criteria, update,
