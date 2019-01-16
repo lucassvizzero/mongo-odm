@@ -345,8 +345,11 @@ class BaseModel:
         sort_query = self.sort_query(criteria, tuples=True)
         criteria = self.filter(criteria)
 
-        # remove _id from $set operation if it exists 
-        update.get('$set', dict()).pop('_id', None)
+        set_query = update.get('$set', dict())
+        set_query = self.dict_rep(set_query)
+        set_query['updated_at'] = datetime.utcnow()
+        set_query.pop('_id', None)  # remove _id from $set operation if it exists 
+        update['$set'] = set_query
 
         # logging.info(criteria)
         r = await self.db[self.collection_name].find_one_and_update(criteria, update,
