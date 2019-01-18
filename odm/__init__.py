@@ -7,7 +7,7 @@ import copy
 from datetime import datetime
 import logging
 
-from bson import ObjectId
+from bson.objectid import ObjectId
 from pymongo import ReturnDocument
 
 from .data_types import Relations, Types
