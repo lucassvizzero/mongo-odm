@@ -132,7 +132,7 @@ class BaseModel:
                         query[name] = {"$regex": ".*" +
                                                  str(param) + ".*", "$options": 'ig'}
             else:
-                if name not in ["sort", "sort_asc", "sort_desc", "page", "page_size"]:
+                if name not in ["sort", "sort_asc", "sort_desc", "page", "page_size", "relations"]:
                     query[name] = param
 
         if params.get("$or"):
