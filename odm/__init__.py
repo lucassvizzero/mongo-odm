@@ -346,7 +346,7 @@ class BaseModel:
         criteria = self.filter(criteria)
 
         set_query = update.get('$set', dict())
-        set_query = self.dict_rep(set_query)
+        set_query = self.preparse_fields(set_query)
         set_query['updated_at'] = datetime.utcnow()
         set_query.pop('_id', None)  # remove _id from $set operation if it exists 
         update['$set'] = set_query
