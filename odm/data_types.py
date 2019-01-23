@@ -16,6 +16,7 @@ class Types:
     Object = "Object"
     Array = "Array"
     ObjectId = "ObjectId"
+    ObjectIdList = "ObjectIdList"
     Boolean = "Boolean"
 
 
@@ -24,6 +25,7 @@ class Relations:
     Relations class.
 
     """
+    hasManyLocally = "hasManyLocally"
     hasMany = "hasMany"
     hasOne = "hasOne"
     belongsToMany = "belongsToMany"
