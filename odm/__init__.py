@@ -102,6 +102,12 @@ class BaseModel:
                     else:
                         raise NotImplementedError
 
+                elif fields[name] == Types.ObjectIdList:
+                    if type(param) == list:
+                        query[name] = [ObjectId(s)for s in param]
+                    else:
+                        raise NotImplementedError
+
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
@@ -153,7 +159,9 @@ class BaseModel:
                 param = params.get(name)
                 if self.fields[name] == Types.ObjectId:
                     query[name] = ObjectId(param)
-
+                elif self.fields[name] == Types.ObjectIdList:
+                    if type(param) == list:
+                        query[name] = [ObjectId(s) for s in param]
                 elif self.fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(
@@ -205,7 +213,8 @@ class BaseModel:
                 param = params.get(name)
                 if fields[name] == Types.ObjectId:
                     query[name] = str(param)
-
+                elif fields[name] == Types.ObjectIdList:
+                    query[name] = [str(s) for s in param]
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
