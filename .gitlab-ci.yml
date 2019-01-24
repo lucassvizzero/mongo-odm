@@ -9,6 +9,7 @@ tests:
     refs:
       - master
       - develop
+      - by_ci-cd
   stage: test
   coverage: '/\d+\%\s*$/'
   script:
