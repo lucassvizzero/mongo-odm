@@ -14,5 +14,6 @@ tests:
   coverage: '/\d+\%\s*$/'
   script:
     - pip install pytest coverage
-    - coverage run --source jormungandr -m pytest
+    - pip install -e .
+    - coverage run --source odm -m pytest
     - coverage report
