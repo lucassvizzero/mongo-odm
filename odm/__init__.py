@@ -102,6 +102,12 @@ class BaseModel:
                     else:
                         raise NotImplementedError
 
+                elif fields[name] == Types.ObjectIdList:
+                    if type(param) == list:
+                        query[name] = [ObjectId(s)for s in param]
+                    else:
+                        raise NotImplementedError
+
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
@@ -153,7 +159,9 @@ class BaseModel:
                 param = params.get(name)
                 if self.fields[name] == Types.ObjectId:
                     query[name] = ObjectId(param)
-
+                elif self.fields[name] == Types.ObjectIdList:
+                    if type(param) == list:
+                        query[name] = [ObjectId(s) for s in param]
                 elif self.fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(
@@ -205,7 +213,8 @@ class BaseModel:
                 param = params.get(name)
                 if fields[name] == Types.ObjectId:
                     query[name] = str(param)
-
+                elif fields[name] == Types.ObjectIdList:
+                    query[name] = [str(s) for s in param]
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
@@ -235,7 +244,7 @@ class BaseModel:
         for name in self.relations:
             if params.get(name) is not None:
                 m = self.relations[name]["model"](self.db)
-                if self.relations[name]["type"] in [Relations.hasMany, Relations.belongsToMany, Relations.manyToMany]:
+                if self.relations[name]["type"] in [Relations.hasManyLocally, Relations.hasMany, Relations.belongsToMany, Relations.manyToMany]:
                     items = params[name]
                     query[name] = []
                     for k, item in enumerate(items):
@@ -460,6 +469,22 @@ class BaseModel:
                             group["$group"][k] = {"$first": "$" + k}
 
                     aggregation.append(group)
+                elif self.relations[i]["type"] == Relations.hasManyLocally:
+                    lookup = {
+                        '$lookup': {
+                            "from": self.relations[i]["model"](self.db).collection_name,
+                            'let': {'id_list': '$'+self.relations[i]["localKey"]},
+                            'pipeline': [
+                                {
+                                    '$match': {
+                                        '$expr': {'$in': ['$_id', '$$id_list']}
+                                    }
+                                }
+                            ],
+                            'as': i
+                        }
+                    }
+                    aggregation.append(lookup)
                 else:
                     lookup = {"$lookup": {
                         "from": self.relations[i]["model"](self.db).collection_name,
@@ -483,6 +508,13 @@ class BaseModel:
                     }}
 
                 if self.relations[i]["type"] == Relations.hasMany:
+                    project["$project"][i] = {"$filter": {
+                        "input": "$" + str(i),
+                        "as": str(i),
+                        "cond": {"$ifNull": ["$$" + str(i) + ".deleted_at", True]}
+                    }}
+
+                if self.relations[i]["type"] == Relations.hasManyLocally:
                     project["$project"][i] = {"$filter": {
                         "input": "$" + str(i),
                         "as": str(i),
