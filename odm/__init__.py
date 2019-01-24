@@ -74,6 +74,12 @@ class BaseModel:
             sort_query = [(k, sort_query[k]) for k in sort_query]
 
         return sort_query
+    
+    def _split(self, string, sep: str=','):
+        tokens = string.split(sep)
+        tokens = [t.strip() for t in tokens]  # rm white spaces 
+        tokens = list(filter(None, tokens))  # filter out empty strings
+        return tokens
 
     def filter(self, params: dict) -> dict:
         """
@@ -86,6 +92,9 @@ class BaseModel:
         fields = self.fields
         fields["created_at"] = Types.ISODate
         fields["updated_at"] = Types.ISODate
+        text_fields = params.get('text_fields', [])
+        if type(text_fields) == str:
+            text_fields = self._split(text_fields)
         for name in params:
             param = params[name]
             if fields.get(name) is not None:
@@ -99,6 +108,12 @@ class BaseModel:
                             query[name] = param
                     elif type(param) == Types.ObjectId:
                         query[name] = param
+                    else:
+                        raise NotImplementedError
+
+                elif fields[name] == Types.ObjectIdList:
+                    if type(param) == list:
+                        query[name] = [ObjectId(s)for s in param]
                     else:
                         raise NotImplementedError
 
@@ -126,13 +141,15 @@ class BaseModel:
                     query[name] = param
 
                 elif fields[name] == Types.String:
-                    if "$regex" in param:
-                        query[name] = param
+                    if name in text_fields:
+                        query[name] = {
+                            "$regex": ".*" + str(param) + ".*",
+                            "$options": "ig"
+                        }
                     else:
-                        query[name] = {"$regex": ".*" +
-                                                 str(param) + ".*", "$options": 'ig'}
+                        query[name] = param
             else:
-                if name not in ["sort", "sort_asc", "sort_desc", "page", "page_size", "relations"]:
+                if name not in ["sort", "sort_asc", "sort_desc", "page", "page_size", "relations", "text_fields"]:
                     query[name] = param
 
         if params.get("$or"):
@@ -153,7 +170,9 @@ class BaseModel:
                 param = params.get(name)
                 if self.fields[name] == Types.ObjectId:
                     query[name] = ObjectId(param)
-
+                elif self.fields[name] == Types.ObjectIdList:
+                    if type(param) == list:
+                        query[name] = [ObjectId(s) for s in param]
                 elif self.fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(
@@ -205,7 +224,8 @@ class BaseModel:
                 param = params.get(name)
                 if fields[name] == Types.ObjectId:
                     query[name] = str(param)
-
+                elif fields[name] == Types.ObjectIdList:
+                    query[name] = [str(s) for s in param]
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
@@ -235,7 +255,7 @@ class BaseModel:
         for name in self.relations:
             if params.get(name) is not None:
                 m = self.relations[name]["model"](self.db)
-                if self.relations[name]["type"] in [Relations.hasMany, Relations.belongsToMany, Relations.manyToMany]:
+                if self.relations[name]["type"] in [Relations.hasManyLocally, Relations.hasMany, Relations.belongsToMany, Relations.manyToMany]:
                     items = params[name]
                     query[name] = []
                     for k, item in enumerate(items):
@@ -460,6 +480,22 @@ class BaseModel:
                             group["$group"][k] = {"$first": "$" + k}
 
                     aggregation.append(group)
+                elif self.relations[i]["type"] == Relations.hasManyLocally:
+                    lookup = {
+                        '$lookup': {
+                            "from": self.relations[i]["model"](self.db).collection_name,
+                            'let': {'id_list': '$'+self.relations[i]["localKey"]},
+                            'pipeline': [
+                                {
+                                    '$match': {
+                                        '$expr': {'$in': ['$_id', '$$id_list']}
+                                    }
+                                }
+                            ],
+                            'as': i
+                        }
+                    }
+                    aggregation.append(lookup)
                 else:
                     lookup = {"$lookup": {
                         "from": self.relations[i]["model"](self.db).collection_name,
@@ -483,6 +519,13 @@ class BaseModel:
                     }}
 
                 if self.relations[i]["type"] == Relations.hasMany:
+                    project["$project"][i] = {"$filter": {
+                        "input": "$" + str(i),
+                        "as": str(i),
+                        "cond": {"$ifNull": ["$$" + str(i) + ".deleted_at", True]}
+                    }}
+
+                if self.relations[i]["type"] == Relations.hasManyLocally:
                     project["$project"][i] = {"$filter": {
                         "input": "$" + str(i),
                         "as": str(i),

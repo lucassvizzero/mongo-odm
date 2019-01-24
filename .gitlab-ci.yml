@@ -1,0 +1,18 @@
+image: docker:stable
+
+services:
+  - docker:dind
+
+tests:
+  image: python:3.6-alpine
+  only:
+    refs:
+      - master
+      - develop
+  stage: test
+  coverage: '/\d+\%\s*$/'
+  script:
+    - pip install pytest coverage
+    - pip install -e .
+    - coverage run --source odm -m pytest
+    - coverage report
