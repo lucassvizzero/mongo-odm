@@ -74,6 +74,12 @@ class BaseModel:
             sort_query = [(k, sort_query[k]) for k in sort_query]
 
         return sort_query
+    
+    def _split(self, string, sep: str=','):
+        tokens = string.split(sep)
+        tokens = [t.strip() for t in tokens]  # rm white spaces 
+        tokens = list(filter(None, tokens))  # filter out empty strings
+        return tokens
 
     def filter(self, params: dict) -> dict:
         """
@@ -86,6 +92,9 @@ class BaseModel:
         fields = self.fields
         fields["created_at"] = Types.ISODate
         fields["updated_at"] = Types.ISODate
+        text_fields = params.get('text_fields', [])
+        if type(text_fields) == str:
+            text_fields = self._split(text_fields)
         for name in params:
             param = params[name]
             if fields.get(name) is not None:
@@ -132,13 +141,15 @@ class BaseModel:
                     query[name] = param
 
                 elif fields[name] == Types.String:
-                    if "$regex" in param:
-                        query[name] = param
+                    if name in text_fields:
+                        query[name] = {
+                            "$regex": ".*" + str(param) + ".*",
+                            "$options": "ig"
+                        }
                     else:
-                        query[name] = {"$regex": ".*" +
-                                                 str(param) + ".*", "$options": 'ig'}
+                        query[name] = param
             else:
-                if name not in ["sort", "sort_asc", "sort_desc", "page", "page_size", "relations"]:
+                if name not in ["sort", "sort_asc", "sort_desc", "page", "page_size", "relations", "text_fields"]:
                     query[name] = param
 
         if params.get("$or"):
