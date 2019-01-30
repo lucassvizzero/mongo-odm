@@ -24,13 +24,13 @@ class BaseModel:
     :method paginate(params): Paginates a result.
     :method find(params, force_single_result, relations, force_fetch_protected_fields): Finds a query.
     :method first(params, relations): Returns the first find of a query.
-    :method cleanProtectedFields(model, result, force_fetch_protected_fields): Cleans the protected fields.
-    :method relationships(criteria, keyArray, force_fetch_protected_fields): Check the relationships.
     :method paged(params, pagination, relations, force_fetch_protected_fields): Pages a result.
     :method remove(_id): Removes a result.
     :method save(bus_object): Saves a result.
-    :method checkCascadePolicy(cascade, cascade_policy): Check the CascadePolicy.
-    :method saveCollection(model, properti, relation, result_model): Saves the collection.
+    :method _check_cascade_policy(cascade, cascade_policy): Check the CascadePolicy.
+    :method _clear_protected_fields(model, result, force_fetch_protected_fields): Cleans the protected fields.
+    :method _relationships(criteria, keyArray, force_fetch_protected_fields): Check the relationships.
+    :method _save_collection(model, properti, relation, result_model): Saves the collection.
     """
 
     def __init__(self, db):
@@ -307,7 +307,7 @@ class BaseModel:
 
         if len(relations):
             sort_query = self.sort_query(params)
-            ag = self.relationships(criteria, relations, force_fetch_protected_fields)
+            ag = self._relationships(criteria, relations, force_fetch_protected_fields)
             ag.insert(1, {'$sort': sort_query})
 
             cursor = self.db[self.collection_name].aggregate(ag)
@@ -322,7 +322,7 @@ class BaseModel:
                 results.append(self.dict_rep(doc))
 
         for result in results:
-            results = self.clean_protected_fields(
+            results = self._clear_protected_fields(
                 self, results, force_fetch_protected_fields)
 
             for key in self.relations:
@@ -330,10 +330,10 @@ class BaseModel:
                 if result.get(key) is not None:
                     if type(result[key]) == list:
                         for k, val in enumerate(result[key]):
-                            result[key][k] = self.clean_protected_fields(
+                            result[key][k] = self._clear_protected_fields(
                                 relation, val, force_fetch_protected_fields)
                     else:
-                        result[key] = self.clean_protected_fields(
+                        result[key] = self._clear_protected_fields(
                             relation, result[key], force_fetch_protected_fields)
 
             if len(results) == 0:
@@ -389,7 +389,7 @@ class BaseModel:
         """
         return self.find(params, True, relations)
 
-    def clean_protected_fields(self, model, result, force_fetch_protected_fields: list = list()):
+    def _clear_protected_fields(self, model, result, force_fetch_protected_fields: list = list()):
         """
         Cleans the protected fields.
 
@@ -401,7 +401,7 @@ class BaseModel:
         if type(result) == list:
             a = []
             for r in result:
-                a.append(self.clean_protected_fields(
+                a.append(self._clear_protected_fields(
                     model, r, force_fetch_protected_fields))
             return a
         else:
@@ -410,7 +410,7 @@ class BaseModel:
                     del result[p]
         return result
 
-    def relationships(self, criteria: dict, key_array: list, force_fetch_protected_fields: list = list(),
+    def _relationships(self, criteria: dict, key_array: list, force_fetch_protected_fields: list = list(),
                       pagination: dict = dict()):
         """
         Check the relationships.
@@ -557,7 +557,7 @@ class BaseModel:
         """
         pagination = self.paginate(pagination)
         criteria = self.filter(params)
-        ag = self.relationships(criteria, relations, force_fetch_protected_fields, pagination=pagination)
+        ag = self._relationships(criteria, relations, force_fetch_protected_fields, pagination=pagination)
         criteria["deleted_at"] = {"$exists": False}
 
         cursor = self.db[self.collection_name].aggregate(ag)
@@ -568,7 +568,7 @@ class BaseModel:
             results.append(self.dict_rep(doc))
 
         for result in results:
-            results = self.clean_protected_fields(
+            results = self._clear_protected_fields(
                 self, results, force_fetch_protected_fields)
 
             for key in self.relations:
@@ -576,11 +576,11 @@ class BaseModel:
                 if result.get(key) is not None:
                     if type(result[key]) == list:
                         for k, val in enumerate(result[key]):
-                            result[key][k] = self.clean_protected_fields(
+                            result[key][k] = self._clear_protected_fields(
                                 relation, val, force_fetch_protected_fields)
                     else:
                         if result.get(key) is not None:
-                            result[key] = self.clean_protected_fields(
+                            result[key] = self._clear_protected_fields(
                                 relation, result[key], force_fetch_protected_fields)
         return {
             "results": results,
@@ -600,7 +600,7 @@ class BaseModel:
         now = datetime.utcnow()
         related_models = []
         for k in self.relations:
-            if self.check_cascade_policy(self.relations[k]["cascade"], ["DELETE"]):
+            if self._check_cascade_policy(self.relations[k]["cascade"], ["DELETE"]):
                 related_models.append(k)
         if len(related_models):
             cache = await self.first({"_id": _id}, related_models)
@@ -666,11 +666,11 @@ class BaseModel:
         saved = await self.db[self.collection_name].save(to_save)
         to_save["_id"] = saved
         for k in self.relations:
-            if k in bus_object.keys() and self.check_cascade_policy(self.relations[k]["cascade"], cascade_policy):
-                await self.save_collection(bus_object, k, self.relations[k], to_save)
+            if k in bus_object.keys() and self._check_cascade_policy(self.relations[k]["cascade"], cascade_policy):
+                await self._save_collection(bus_object, k, self.relations[k], to_save)
         return self.dict_rep(to_save)
 
-    def check_cascade_policy(self, cascade, cascade_policy):
+    def _check_cascade_policy(self, cascade, cascade_policy):
         """
         Check the CascadePolicy.
 
@@ -684,7 +684,7 @@ class BaseModel:
                 should_cascade = True
         return should_cascade
 
-    async def save_collection(self, model, properti, relation, result_model):
+    async def _save_collection(self, model, properti, relation, result_model):
         """
         Saves the collection.
 
