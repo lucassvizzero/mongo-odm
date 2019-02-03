@@ -9,8 +9,10 @@ import logging
 
 from bson.objectid import ObjectId
 from pymongo import ReturnDocument
+from pymongo.results import UpdateResult, DeleteResult
 
 from .data_types import Relations, Types
+from .exceptions import DocumentNotFound
 
 
 class BaseModel:
@@ -27,19 +29,45 @@ class BaseModel:
     :method paged(params, pagination, relations, force_fetch_protected_fields): Pages a result.
     :method remove(_id): Removes a result.
     :method save(bus_object): Saves a result.
-    :method _check_cascade_policy(cascade, cascade_policy): Check the CascadePolicy.
     :method _clear_protected_fields(model, result, force_fetch_protected_fields): Cleans the protected fields.
     :method _relationships(criteria, keyArray, force_fetch_protected_fields): Check the relationships.
-    :method _save_collection(model, properti, relation, result_model): Saves the collection.
     """
+
+    PRE_CREATE = 'pre_create'
+    POST_CREATE = 'post_crete'
+    PRE_UPDATE = 'pre_update'
+    POST_UPDATE = 'post_update'
+    PRE_DELETE = 'pre_delete'
+    POST_DELETE = 'post_delete'
+
+    db = None
+    fields = dict()
+    collection_name = None
+    protected_fields = []
+    relations = {}
+    softDeletes = False
+    hooks = list()
 
     def __init__(self, db):
         self.db = db
-        self.fields = dict()
-        self.collection_name = None
-        self.protected_fields = []
-        self.relations = {}
-        self.softDeletes = False
+    
+    async def pre_delete(self, model_id):
+        pass
+
+    async def post_delete(self, model_id, saved, softDeletes):
+        pass
+
+    async def pre_create(self):
+        pass
+
+    async def post_create(self, model_id, saved):
+        pass
+
+    async def pre_update(self, model_id):
+        pass
+
+    async def post_update(self, model_id, saved):
+        pass
 
     def sort_query(self, params: dict, tuples=False):
         """
@@ -129,7 +157,7 @@ class BaseModel:
                     query[name] = param
 
                 elif fields[name] == Types.Integer:
-                    if isinstance(param, int):
+                    if not isinstance(param, int):
                         query[name] = int(param)
                     else:
                         query[name] = param
@@ -219,6 +247,7 @@ class BaseModel:
         fields = self.fields
         fields["created_at"] = Types.ISODate
         fields["updated_at"] = Types.ISODate
+        fields["deleted_at"] = Types.ISODate
         for name in fields:
             if params.get(name) is not None:
                 param = params.get(name)
@@ -255,7 +284,7 @@ class BaseModel:
         for name in self.relations:
             if params.get(name) is not None:
                 m = self.relations[name]["model"](self.db)
-                if self.relations[name]["type"] in [Relations.hasManyLocally, Relations.hasMany, Relations.belongsToMany, Relations.manyToMany]:
+                if self.relations[name]["type"] in [Relations.hasManyLocally, Relations.hasMany, Relations.belongsToMany]:
                     items = params[name]
                     query[name] = []
                     for k, item in enumerate(items):
@@ -371,10 +400,18 @@ class BaseModel:
         set_query.pop('_id', None)  # remove _id from $set operation if it exists 
         update['$set'] = set_query
 
-        # logging.info(criteria)
+
+        if self.PRE_UPDATE in self.hooks:
+            pre_doc = await self.db[self.collection_name].find_one(criteria, sort=sort_query)
+            await self.pre_update(str(pre_doc['_id']))
+
         r = await self.db[self.collection_name].find_one_and_update(criteria, update,
                                                                     sort=sort_query,
                                                                     return_document=ReturnDocument.AFTER)
+
+        if self.POST_UPDATE in self.hooks:
+            post_doc = self.dict_rep(r)
+            await self.post_update(post_doc.get('_id'), self.dict_rep(post_doc))
 
         if r:
             return self.dict_rep(r)
@@ -454,33 +491,7 @@ class BaseModel:
 
         for i in self.relations:
             if i in key_array:
-                if self.relations[i]["type"] == Relations.manyToMany:
-                    lookup = {"$lookup": {
-                        "from": self.relations[i]["joinCollection"],
-                        "localField": self.relations[i]["localKey"],
-                        "foreignField": self.relations[i]["localJoinKey"],
-                        "as": i
-                    }}
-                    aggregation.append(lookup)
-                    aggregation.append(
-                        {"$unwind": {"path": "$" + i, "preserveNullAndEmptyArrays": True}})
-                    join_lookup = {"$lookup": {
-                        "from": self.relations[i]["model"](self.db).collection_name,
-                        "localField": i + "." + self.relations[i]["foreignJoinKey"],
-                        "foreignField": self.relations[i]["foreignKey"],
-                        "as": i
-                    }}
-                    aggregation.append(join_lookup)
-                    aggregation.append(
-                        {"$unwind": {"path": "$" + i, "preserveNullAndEmptyArrays": True}})
-                    group = {"$group": {"_id": "$_id"}}
-                    group["$group"][i] = {"$push": "$" + i}
-                    for k in project["$project"]:
-                        if k != "_id":
-                            group["$group"][k] = {"$first": "$" + k}
-
-                    aggregation.append(group)
-                elif self.relations[i]["type"] == Relations.hasManyLocally:
+                if self.relations[i]["type"] == Relations.hasManyLocally:
                     lookup = {
                         '$lookup': {
                             "from": self.relations[i]["model"](self.db).collection_name,
@@ -526,13 +537,6 @@ class BaseModel:
                     }}
 
                 if self.relations[i]["type"] == Relations.hasManyLocally:
-                    project["$project"][i] = {"$filter": {
-                        "input": "$" + str(i),
-                        "as": str(i),
-                        "cond": {"$ifNull": ["$$" + str(i) + ".deleted_at", True]}
-                    }}
-
-                if self.relations[i]["type"] == Relations.manyToMany:
                     project["$project"][i] = {"$filter": {
                         "input": "$" + str(i),
                         "as": str(i),
@@ -598,52 +602,75 @@ class BaseModel:
         :return: Database with object removed.
         """
         now = datetime.utcnow()
-        related_models = []
-        for k in self.relations:
-            if self._check_cascade_policy(self.relations[k]["cascade"], ["DELETE"]):
-                related_models.append(k)
-        if len(related_models):
-            cache = await self.first({"_id": _id}, related_models)
-            for model in related_models:
-                collection_name = self.relations[model]["model"](
-                    self.db).collection_name
-                if cache.get(model):
-                    if self.relations[model]["type"] in [Relations.hasMany, Relations.belongsToMany]:
-                        for item in cache[model]:
-                            soft_delete_support = self.relations[model].get("softDeletes")
-                            if not soft_delete_support or soft_delete_support is None:
-                                to_delete = await self.db[collection_name].remove({"_id": ObjectId(item["_id"])})
-                            else:
-                                cache_rel = self.preparse_fields(item)
-                                cache_rel["deleted_at"] = now
-                                del cache_rel["_id"]
-                                to_delete = await self.db[collection_name].update({"_id": ObjectId(item["_id"])},
-                                                                                  {"$set": cache_rel})
-                    elif self.relations[model]["type"] in [Relations.manyToMany]:
-                        to_remove = {}
-                        to_remove[self.relations[model]["localJoinKey"]] = ObjectId(cache["_id"])
-                        to_delete = await self.db[self.relations[model]["joinCollection"]].remove(to_remove)
-                    else:
-                        item = cache[model]
-                        soft_delete_support = self.relations[model].get("softDeletes")
-                        if not soft_delete_support or soft_delete_support is None:
-                            to_delete = await self.db[collection_name].remove({"_id": ObjectId(item["_id"])})
-                        else:
-                            cache_rel = self.preparse_fields(item)
-                            cache_rel["deleted_at"] = now
-                            del cache_rel["_id"]
-                            to_delete = await self.db[collection_name].update({"_id": ObjectId(item["_id"])},
-                                                                              {"$set": cache_rel})
+        saved = None
+        removed = False
+
+        if self.PRE_DELETE in self.hooks:
+            await self.pre_delete(str(_id))
 
         if not self.softDeletes or force:
-            r = await self.db[self.collection_name].remove({"_id": ObjectId(_id)})
+            r = await self.db[self.collection_name].delete_one({"_id": ObjectId(_id)})
+            if isinstance(r, DeleteResult):
+                removed = bool(r.deleted_count)
+            else:
+                raise Exception('Unexpected query result')
         else:
             cache_rel = await self.first({"_id": _id}, [])
+            if not cache_rel:
+                raise DocumentNotFound()
             cache_rel = self.preparse_fields(cache_rel)
             cache_rel["deleted_at"] = now
             del cache_rel["_id"]
-            r = await self.db[self.collection_name].update({"_id": ObjectId(_id)}, {"$set": cache_rel})
+            r = await self.db[self.collection_name].update_one({"_id": ObjectId(_id)}, {"$set": cache_rel})
+            if isinstance(r, UpdateResult):
+                removed = bool(r.modified_count)
+            else:
+                raise Exception('Unexpected query result')
+            saved = copy.deepcopy(cache_rel)
+            saved['_id'] = _id
+            saved = self.dict_rep(saved)
+
+        if self.POST_DELETE in self.hooks:
+            await self.post_delete(str(_id), saved, self.softDeletes)
+
+        return removed
+
+    async def _db_update_one(self, where, to_save):
+        if self.PRE_UPDATE in self.hooks:
+            await self.pre_update(str(where.get('_id')))
+
+        r = await self.db[self.collection_name].update_one(where, {'$set': to_save})
+
+        if self.POST_UPDATE in self.hooks:
+            post_doc = self.dict_rep(to_save)
+            await self.post_update(str(post_doc.get('_id')), post_doc)
+
         return r
+
+    async def _db_save(self, to_save):
+        _id = to_save.get('_id')
+        is_update = bool(_id)  # is update if there is an _id
+
+        # Pre hooks
+        if is_update and self.PRE_UPDATE in self.hooks:
+            await self.pre_update(str(_id))
+        elif self.PRE_CREATE in self.hooks:
+            await self.pre_create()
+
+        # actual persistance
+        saved = await self.db[self.collection_name].save(to_save)
+
+        # Post hooks
+        if is_update and self.POST_UPDATE in self.hooks:
+            _id = saved.get('_id')
+            post_doc = self.dict_rep(saved)
+            await self.post_update(str(_id), post_doc)
+        elif self.POST_CREATE in self.hooks:
+            _id = saved
+            post_doc = self.dict_rep(dict(to_save, **{'_id': _id}))
+            await self.post_create(str(_id), post_doc)
+
+        return saved
 
     async def save(self, bus_object: dict) -> dict:
         """
@@ -653,122 +680,11 @@ class BaseModel:
         :return: Saved dictionary.
         """
         to_save = self.preparse_fields(bus_object)
-        cascade_policy = []
-        if bus_object.get("_id"):
-            cascade_policy.append("UPDATE")
-        else:
-            cascade_policy.append("CREATE")
         if to_save.get("_id") is None:
             to_save["created_at"] = datetime.utcnow()
             to_save["updated_at"] = datetime.utcnow()
         else:
             to_save["updated_at"] = datetime.utcnow()
-        saved = await self.db[self.collection_name].save(to_save)
+        saved = await self._db_save(to_save)
         to_save["_id"] = saved
-        for k in self.relations:
-            if k in bus_object.keys() and self._check_cascade_policy(self.relations[k]["cascade"], cascade_policy):
-                await self._save_collection(bus_object, k, self.relations[k], to_save)
         return self.dict_rep(to_save)
-
-    def _check_cascade_policy(self, cascade, cascade_policy):
-        """
-        Check the CascadePolicy.
-
-        :param cascade: List of cascades.
-        :param cascade_policy: Cascade policy to be checked.
-        :return: Cascade policy evaluated.
-        """
-        should_cascade = False
-        for i in cascade:
-            if i in cascade_policy:
-                should_cascade = True
-        return should_cascade
-
-    async def _save_collection(self, model, properti, relation, result_model):
-        """
-        Saves the collection.
-
-        :param model: Model instance.
-        :param properti: Property to be used.
-        :param relation: Relation to be used.
-        :param result_model: Result model to be saved.
-        :return: Saved collection.
-        """
-        upserted = []
-        cursor = self.db[relation["model"](self.db).collection_name]
-        bulk = cursor.initialize_ordered_bulk_op()
-        if type(model[properti]) == list and relation["type"] != Relations.manyToMany:
-            for item in model[properti]:
-                item[relation["foreignKey"]] = result_model[relation["localKey"]]
-                if item.get("_id"):
-                    _id = item["_id"]
-                    item["updated_at"] = datetime.utcnow()
-                    upserted.append(ObjectId(_id))
-                    del item["_id"]
-                    bulk.find({"_id": ObjectId(_id)}
-                              ).upsert().update({'$set': item})
-                else:
-                    item["updated_at"] = datetime.utcnow()
-                    item["created_at"] = datetime.utcnow()
-                    bulk.insert(item)
-        if type(model[properti]) == list and relation["type"] == Relations.manyToMany:
-            # deletion of existing records
-            cursor_delete = self.db[relation["joinCollection"]]
-            delete_bulk = cursor_delete.initialize_ordered_bulk_op()
-            to_delete = {}
-            _id = result_model[relation["localKey"]]
-            to_delete[relation["localJoinKey"]] = ObjectId(_id)
-            delete_bulk.find(to_delete).remove()
-            try:
-                result = await delete_bulk.execute()
-            except Exception as bwe:
-                logging.info("Error on manyToMany deletion bulk..")
-            # insertion of current records
-            cursor_insert = self.db[relation["joinCollection"]]
-            insert_bulk = cursor_insert.initialize_ordered_bulk_op()
-            for item in model[properti]:
-                to_insert = {}
-                to_insert[relation["localJoinKey"]] = ObjectId(
-                    result_model[relation["localKey"]])
-                to_insert[relation["foreignJoinKey"]] = ObjectId(
-                    item[relation["foreignKey"]])
-                insert_bulk.find(to_insert).upsert().update({'$set': to_insert})
-            try:
-                result = await insert_bulk.execute()
-            except Exception as bwe:
-                logging.info("Error on manyToMany insertion bulk..")
-
-        if type(model[properti]) == dict and type(model[properti]) != list:
-            item = model[properti]
-            if item.get("_id"):
-                _id = item["_id"]
-                item["updated_at"] = datetime.utcnow()
-                upserted.append(ObjectId(_id))
-                del model[properti]["_id"]
-                bulk.find({"_id": ObjectId(_id)}
-                          ).upsert().update({'$set': item})
-                # ops.append({"updateOne":{"filter":{"_id":ObjectId(_id)},"update":{"$set":item},"upsert":True}})
-            else:
-                item["created_at"] = datetime.utcnow()
-                item["updated_at"] = datetime.utcnow()
-                bulk.insert(item)
-        try:
-            result = await bulk.execute()
-            ops = []
-            for i in result["upserted"]:
-                ops.append(i["_id"])
-        except Exception as bwe:
-            logging.info("Error writing bulk..")
-
-        fetched = self.db[relation["model"](self.db).collection_name].find({
-            '_id': {"$in": upserted}})
-
-        wololo = []
-        async for i in fetched:
-            wololo.append(i)
-        if relation["type"] == Relations.belongsTo and len(fetched) > 0:
-            result_model[properti] = wololo[0]
-        else:
-            result_model[properti] = wololo
-
-        return result_model

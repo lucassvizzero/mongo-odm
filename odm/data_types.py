@@ -30,4 +30,3 @@ class Relations:
     hasOne = "hasOne"
     belongsToMany = "belongsToMany"
     belongsTo = "belongsTo"
-    manyToMany = "manyToMany"
