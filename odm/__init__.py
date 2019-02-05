@@ -177,7 +177,16 @@ class BaseModel:
                     else:
                         query[name] = param
             else:
-                if name not in ["sort", "sort_asc", "sort_desc", "page", "page_size", "relations", "text_fields"]:
+                reserved_names = [
+                    "sort",
+                    "sort_asc",
+                    "sort_desc",
+                    "page",
+                    "page_size",
+                    "relations",
+                    "text_fields"
+                ]
+                if name not in reserved_names and '.' not in name:
                     query[name] = param
 
         if params.get("$or"):
@@ -338,6 +347,24 @@ class BaseModel:
             sort_query = self.sort_query(params)
             ag = self._relationships(criteria, relations, force_fetch_protected_fields)
             ag.insert(1, {'$sort': sort_query})
+
+            # Allots dot notation filters to be considered in queries
+            extra_filters = {}
+            for key, value in params.items():
+                if '.' in key:
+                    parts = key.split('.')
+                    rel_name = parts[0]
+                    rel_filter_field = parts[1]
+                    rel = self.relations.get(rel_name)
+                    if rel:
+                        rel_instance = rel['model'](self.db)
+                        rel_filter = rel_instance.filter({rel_filter_field: value})
+                        if rel_filter.get(rel_filter_field):
+                            extra_filters[key] = rel_filter.get(rel_filter_field)
+            if extra_filters:
+                ag.append({
+                    '$match': extra_filters
+                })
 
             cursor = self.db[self.collection_name].aggregate(ag)
             results = list()
