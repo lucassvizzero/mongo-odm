@@ -141,9 +141,9 @@ class BaseModel:
 
                 elif fields[name] == Types.ObjectIdList:
                     if type(param) == list:
-                        query[name] = [ObjectId(s)for s in param]
-                    else:
-                        raise NotImplementedError
+                        query[name] = {'$all': [ObjectId(s)for s in param]}
+                    elif type(param) == str:
+                        query[name] = {'$all': [ObjectId(s)for s in self._split(param)]}
 
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
