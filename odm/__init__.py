@@ -47,6 +47,7 @@ class BaseModel:
     relations = {}
     softDeletes = False
     hooks = list()
+    debug = False
 
     def __init__(self, db):
         self.db = db
@@ -348,7 +349,7 @@ class BaseModel:
             ag = self._relationships(criteria, relations, force_fetch_protected_fields)
             ag.insert(1, {'$sort': sort_query})
 
-            # Allots dot notation filters to be considered in queries
+            # Allows dot notation filters to be considered in queries
             extra_filters = {}
             for key, value in params.items():
                 if '.' in key:
@@ -365,6 +366,9 @@ class BaseModel:
                 ag.append({
                     '$match': extra_filters
                 })
+            
+            if self.debug:
+                print('aggregation', ag)
 
             cursor = self.db[self.collection_name].aggregate(ag)
             results = list()
@@ -590,6 +594,26 @@ class BaseModel:
         criteria = self.filter(params)
         ag = self._relationships(criteria, relations, force_fetch_protected_fields, pagination=pagination)
         criteria["deleted_at"] = {"$exists": False}
+        # Allows dot notation filters to be considered in queries
+        extra_filters = {}
+        for key, value in params.items():
+            if '.' in key:
+                parts = key.split('.')
+                rel_name = parts[0]
+                rel_filter_field = parts[1]
+                rel = self.relations.get(rel_name)
+                if rel:
+                    rel_instance = rel['model'](self.db)
+                    rel_filter = rel_instance.filter({rel_filter_field: value})
+                    if rel_filter.get(rel_filter_field):
+                        extra_filters[key] = rel_filter.get(rel_filter_field)
+        if extra_filters:
+            ag.append({
+                '$match': extra_filters
+            })
+
+        if self.debug:
+            print('aggregation', ag)
 
         cursor = self.db[self.collection_name].aggregate(ag)
 
