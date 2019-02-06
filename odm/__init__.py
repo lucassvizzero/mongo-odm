@@ -709,19 +709,16 @@ class BaseModel:
             await self.pre_create()
 
         # actual persistance
-        saved = await self.db[self.collection_name].save(to_save)
+        _id = await self.db[self.collection_name].save(to_save)
+        post_doc = self.dict_rep(dict(to_save, **{'_id': _id}))
 
         # Post hooks
         if is_update and self.POST_UPDATE in self.hooks:
-            _id = saved.get('_id')
-            post_doc = self.dict_rep(saved)
             await self.post_update(str(_id), post_doc)
         elif self.POST_CREATE in self.hooks:
-            _id = saved
-            post_doc = self.dict_rep(dict(to_save, **{'_id': _id}))
             await self.post_create(str(_id), post_doc)
 
-        return saved
+        return _id
 
     async def save(self, bus_object: dict) -> dict:
         """
@@ -736,6 +733,6 @@ class BaseModel:
             to_save["updated_at"] = datetime.utcnow()
         else:
             to_save["updated_at"] = datetime.utcnow()
-        saved = await self._db_save(to_save)
-        to_save["_id"] = saved
+        _id = await self._db_save(to_save)
+        to_save["_id"] = _id
         return self.dict_rep(to_save)
