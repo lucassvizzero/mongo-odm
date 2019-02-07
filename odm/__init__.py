@@ -203,15 +203,19 @@ class BaseModel:
         :return: A parsed field.
         """
         query = dict()
-        for name in self.fields:
+        fields = self.fields
+        fields["created_at"] = Types.ISODate
+        fields["updated_at"] = Types.ISODate
+        fields["deleted_at"] = Types.ISODate
+        for name in fields:
             if params.get(name) is not None:
                 param = params.get(name)
-                if self.fields[name] == Types.ObjectId:
+                if fields[name] == Types.ObjectId:
                     query[name] = ObjectId(param)
-                elif self.fields[name] == Types.ObjectIdList:
+                elif fields[name] == Types.ObjectIdList:
                     if type(param) == list:
                         query[name] = [ObjectId(s) for s in param]
-                elif self.fields[name] == Types.ISODate:
+                elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(
                             param[:19], "%Y-%m-%dT%H:%M:%S"
@@ -224,22 +228,22 @@ class BaseModel:
                             name
                         ))
 
-                elif self.fields[name] == Types.Object:
+                elif fields[name] == Types.Object:
                     query[name] = param
 
-                elif self.fields[name] == Types.Array:
+                elif fields[name] == Types.Array:
                     query[name] = param
 
-                elif self.fields[name] == Types.Integer:
+                elif fields[name] == Types.Integer:
                     query[name] = int(param)
 
-                elif self.fields[name] == Types.Double:
+                elif fields[name] == Types.Double:
                     query[name] = float(param)
 
-                elif self.fields[name] == Types.Boolean:
+                elif fields[name] == Types.Boolean:
                     query[name] = param
 
-                elif self.fields[name] == Types.String:
+                elif fields[name] == Types.String:
 
                     query[name] = str(param)
                 else:
