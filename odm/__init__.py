@@ -131,10 +131,17 @@ class BaseModel:
                     if type(param) == str:
                         query[name] = ObjectId(param)
                     elif type(param) == dict:
-                        if param.get("$in"):
-                            param["$in"] = [ObjectId(_id)
-                                            for _id in param["$in"]]
-                            query[name] = param
+                        for k in param:
+                            if k == "$in":
+                                param["$in"] = [ObjectId(_id)
+                                                for _id in param["$in"]]
+                            elif k == "$ne":
+                                param["$ne"] = ObjectId(param["$ne"])
+                            else:
+                                msg = 'operador não implementado {}'.format(k)
+                                raise NotImplementedError(msg)
+                        query[name] = param
+                        
                     elif type(param) == Types.ObjectId:
                         query[name] = param
                     else:
@@ -142,9 +149,11 @@ class BaseModel:
 
                 elif fields[name] == Types.ObjectIdList:
                     if type(param) == list:
-                        query[name] = {'$all': [ObjectId(s)for s in param]}
+                        query[name] = {'$all': [ObjectId(s) for s in param]}
                     elif type(param) == str:
-                        query[name] = {'$all': [ObjectId(s)for s in self._split(param)]}
+                        query[name] = {'$all': [ObjectId(s) for s in self._split(param)]}
+                    elif type(param) == Types.ObjectId:
+                        query[name] = {'$all': [param]}
 
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
