@@ -185,6 +185,7 @@ class BaseModel:
                     "page",
                     "page_size",
                     "relations",
+                    "with_thrashed",
                     "text_fields"
                 ]
                 if name not in reserved_names and '.' not in name:
@@ -192,6 +193,9 @@ class BaseModel:
 
         if params.get("$or"):
             query["$or"] = params.get("$or")
+
+        if not params.get('with_thrashed', False):
+            query["deleted_at"] = {"$exists": False}
 
         return query
 
@@ -346,7 +350,6 @@ class BaseModel:
         """
 
         criteria = self.filter(params)
-        criteria["deleted_at"] = {"$exists": False}
 
         if len(relations):
             sort_query = self.sort_query(params)
@@ -418,8 +421,6 @@ class BaseModel:
         """
 
         params = self.filter(params)
-        # logging.info(params)
-        params["deleted_at"] = {"$exists": False}
 
         cursor = await self.db[self.collection_name].count(params)
         return cursor
@@ -597,7 +598,6 @@ class BaseModel:
         pagination = self.paginate(pagination)
         criteria = self.filter(params)
         ag = self._relationships(criteria, relations, force_fetch_protected_fields, pagination=pagination)
-        criteria["deleted_at"] = {"$exists": False}
         # Allows dot notation filters to be considered in queries
         extra_filters = {}
         for key, value in params.items():
