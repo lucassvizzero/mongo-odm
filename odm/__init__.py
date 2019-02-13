@@ -185,7 +185,7 @@ class BaseModel:
                     "page",
                     "page_size",
                     "relations",
-                    "with_thrashed",
+                    "with_trashed",
                     "text_fields"
                 ]
                 if name not in reserved_names and '.' not in name:
@@ -194,7 +194,7 @@ class BaseModel:
         if params.get("$or"):
             query["$or"] = params.get("$or")
 
-        if not params.get('with_thrashed', False):
+        if not params.get('with_trashed', False):
             query["deleted_at"] = {"$exists": False}
 
         return query
