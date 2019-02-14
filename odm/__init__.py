@@ -142,7 +142,7 @@ class BaseModel:
                                 raise NotImplementedError(msg)
                         query[name] = param
                         
-                    elif type(param) == Types.ObjectId:
+                    elif type(param) == ObjectId:
                         query[name] = param
                     else:
                         raise NotImplementedError
@@ -152,7 +152,7 @@ class BaseModel:
                         query[name] = {'$all': [ObjectId(s) for s in param]}
                     elif type(param) == str:
                         query[name] = {'$all': [ObjectId(s) for s in self._split(param)]}
-                    elif type(param) == Types.ObjectId:
+                    elif type(param) == ObjectId:
                         query[name] = {'$all': [param]}
 
                 elif fields[name] == Types.ISODate:
