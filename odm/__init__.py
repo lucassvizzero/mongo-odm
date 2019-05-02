@@ -493,7 +493,7 @@ class BaseModel:
         return result
 
     def _relationships(self, criteria: dict, key_array: list, force_fetch_protected_fields: list = list(),
-                      pagination: dict = dict()):
+                      pagination: dict = dict(), params: dict = dict()):
         """
         Check the relationships.
 
@@ -520,11 +520,6 @@ class BaseModel:
             #        dot.str(i, the_keys[i], tgt)
         project = {"$project": {}}
         aggregation = [{"$match": criteria}]
-
-        if pagination != dict():
-            aggregation.append({"$sort": pagination["sort"]})
-            aggregation.append({"$skip": pagination["page_size"] * pagination["page"]})
-            aggregation.append({"$limit": pagination["page_size"]})
 
         for j in self.fields:
             if j in self.fields:
@@ -589,8 +584,32 @@ class BaseModel:
                     }}
 
         aggregation.append(project)
+
+        # Allows dot notation filters to be considered in queries
+        extra_filters = {}
+        for key, value in params.items():
+            if '.' in key:
+                parts = key.split('.')
+                rel_name = parts[0]
+                rel_filter_field = parts[1]
+                rel = self.relations.get(rel_name)
+                if rel:
+                    rel_instance = rel['model'](self.db)
+                    rel_filter = rel_instance.filter({rel_filter_field: value})
+                    if rel_filter.get(rel_filter_field):
+                        extra_filters[key] = rel_filter.get(rel_filter_field)
+        if extra_filters:
+            aggregation.append({
+                '$match': extra_filters
+            })
+
+        if pagination != dict():
+            aggregation.append({"$skip": pagination["page_size"] * pagination["page"]})
+            aggregation.append({"$limit": pagination["page_size"]})
+
         if pagination.get("sort"):
             aggregation.append({"$sort": pagination["sort"]})
+
         return aggregation
 
     async def paged(self, params: dict, pagination: dict, relations: list,
@@ -606,31 +625,22 @@ class BaseModel:
         """
         pagination = self.paginate(pagination)
         criteria = self.filter(params)
-        ag = self._relationships(criteria, relations, force_fetch_protected_fields, pagination=pagination)
-        # Allows dot notation filters to be considered in queries
-        extra_filters = {}
-        for key, value in params.items():
-            if '.' in key:
-                parts = key.split('.')
-                rel_name = parts[0]
-                rel_filter_field = parts[1]
-                rel = self.relations.get(rel_name)
-                if rel:
-                    rel_instance = rel['model'](self.db)
-                    rel_filter = rel_instance.filter({rel_filter_field: value})
-                    if rel_filter.get(rel_filter_field):
-                        extra_filters[key] = rel_filter.get(rel_filter_field)
-        if extra_filters:
-            ag.append({
-                '$match': extra_filters
-            })
+        ag = self._relationships(criteria, relations, force_fetch_protected_fields, pagination=pagination, params=params)
 
         if self.debug:
             print('aggregation', ag)
 
         cursor = self.db[self.collection_name].aggregate(ag)
 
-        count = await self.db[self.collection_name].find(criteria).count()
+        # creates a query search for total itens
+        countAg = self._relationships(criteria, relations, force_fetch_protected_fields, params=params)
+
+        countAg = countAg + [{ '$group': { '_id': None, 'count': { '$sum': 1 } } }, { '$project': { '_id': 0 } }]
+        countCursor = self.db[self.collection_name].aggregate(countAg)
+        count = 0
+        async for doc in countCursor:
+            count = doc['count']
+            
         results = list()
         async for doc in cursor:
             results.append(self.dict_rep(doc))
