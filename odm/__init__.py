@@ -154,6 +154,17 @@ class BaseModel:
                         query[name] = {'$all': [ObjectId(s) for s in self._split(param)]}
                     elif type(param) == ObjectId:
                         query[name] = {'$all': [param]}
+                    elif type(param) == dict:
+                        for k in param:
+                            if k == "$in":
+                                param["$in"] = [ObjectId(_id)
+                                                for _id in param["$in"]]
+                            elif k == "$ne":
+                                param["$ne"] = ObjectId(param["$ne"])
+                            else:
+                                msg = 'operador não implementado {}'.format(k)
+                                raise NotImplementedError(msg)
+                        query[name] = param
 
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
@@ -392,7 +403,13 @@ class BaseModel:
                 results.append(self.dict_rep(doc))
         else:
             sort_query = self.sort_query(params, tuples=True)
-            cursor = self.db[self.collection_name].find(criteria, sort=sort_query)
+            pagination = self.paginate(params)
+            opts = dict()
+            if pagination != dict():
+                opts['skip']= pagination["page_size"] * pagination["page"]
+                opts['limit']= pagination["page_size"]
+
+            cursor = self.db[self.collection_name].find(criteria, sort=sort_query, **opts)
             results = list()
             async for doc in cursor:
                 results.append(self.dict_rep(doc))
