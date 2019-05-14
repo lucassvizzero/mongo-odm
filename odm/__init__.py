@@ -403,13 +403,8 @@ class BaseModel:
                 results.append(self.dict_rep(doc))
         else:
             sort_query = self.sort_query(params, tuples=True)
-            pagination = self.paginate(params)
-            opts = dict()
-            if pagination != dict():
-                opts['skip']= pagination["page_size"] * pagination["page"]
-                opts['limit']= pagination["page_size"]
 
-            cursor = self.db[self.collection_name].find(criteria, sort=sort_query, **opts)
+            cursor = self.db[self.collection_name].find(criteria, sort=sort_query)
             results = list()
             async for doc in cursor:
                 results.append(self.dict_rep(doc))
