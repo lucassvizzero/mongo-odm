@@ -208,8 +208,13 @@ class BaseModel:
                     "with_trashed",
                     "text_fields"
                 ]
-                if name not in reserved_names and '.' not in name:
-                    query[name] = param
+                if name not in reserved_names:
+                    if '.' in name:
+                        split_name = name.split('.')[0]
+                        if fields.get(split_name):
+                            query[name] = param
+                    else:
+                        query[name] = param
 
         if params.get("$or"):
             query["$or"] = params.get("$or")
