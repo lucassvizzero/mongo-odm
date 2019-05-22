@@ -620,12 +620,12 @@ class BaseModel:
                 '$match': extra_filters
             })
 
+        if pagination.get("sort"):
+            aggregation.append({"$sort": pagination["sort"]})
+
         if pagination != dict():
             aggregation.append({"$skip": pagination["page_size"] * pagination["page"]})
             aggregation.append({"$limit": pagination["page_size"]})
-
-        if pagination.get("sort"):
-            aggregation.append({"$sort": pagination["sort"]})
 
         return aggregation
 
