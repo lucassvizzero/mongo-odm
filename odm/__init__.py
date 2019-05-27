@@ -170,7 +170,14 @@ class BaseModel:
                     if isinstance(param, str):
                         query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
                     else:
-                        query[name] = param
+                        if isinstance(param, dict):
+                            n_param = dict()
+                            for k, v in param.items():
+                                if k in ["$gt", "$gte", "$lt", "$lte", "$ne", "$eq"]:
+                                    n_param[k] = datetime.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")
+                            query[name] = n_param
+                        else:
+                            query[name] = param
                 elif fields[name] == Types.Object:
                     query[name] = param
 
