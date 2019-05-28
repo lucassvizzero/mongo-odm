@@ -174,7 +174,13 @@ class BaseModel:
                             n_param = dict()
                             for k, v in param.items():
                                 if k in ["$gt", "$gte", "$lt", "$lte", "$ne", "$eq"]:
-                                    n_param[k] = datetime.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")
+                                    if isinstance(v, str):
+                                        n_param[k] = datetime.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")
+                                    elif isinstance(v, datetime):
+                                        n_param[k] = v
+                                    else:
+                                        msg = 'Tipo {} não suportado para o campo {}'.format(type(v), name)
+                                        raise Exception (msg)
                             query[name] = n_param
                         else:
                             query[name] = param
