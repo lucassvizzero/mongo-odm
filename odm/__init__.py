@@ -169,14 +169,14 @@ class BaseModel:
 
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
-                        query[name] = date_parser(param[:19])
+                        query[name] = date_parser(param)
                     else:
                         if isinstance(param, dict):
                             n_param = dict()
                             for k, v in param.items():
                                 if k in ["$gt", "$gte", "$lt", "$lte", "$ne", "$eq"]:
                                     if isinstance(v, str):
-                                        n_param[k] = date_parser(param[:19])
+                                        n_param[k] = date_parser(param)
                                     elif isinstance(v, datetime):
                                         n_param[k] = v
                                     else:
@@ -260,9 +260,7 @@ class BaseModel:
                         query[name] = [ObjectId(s) for s in param]
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
-                        query[name] = datetime.strptime(
-                            param[:19], "%Y-%m-%dT%H:%M:%S"
-                        )
+                        query[name] = date_parser(param)
                     elif isinstance(param, datetime):
                         query[name] = param
                     else:
@@ -314,7 +312,7 @@ class BaseModel:
                     query[name] = [str(s) for s in param]
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
-                        query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
+                        query[name] = date_parser(param)
                     else:
                         query[name] = param.isoformat() + 'Z'
 

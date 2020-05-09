@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='odm',
-    version='0.2.19',
+    version='0.2.21',
     description='Engine MongoDB',
     author='Grupo New Way',
     author_email='contato@gruponewway.com.br',
@@ -14,6 +14,7 @@ setup(
     url='https://git.newwaycorp.io/libraries/python/mongo-odm',
     install_requires=[
         'motor==1.3.1',
-        'jsonschema>=2.6.0'
+        'jsonschema>=2.6.0',
+        'python-dateutil>=2.6.1'
     ]
 )
