@@ -13,7 +13,8 @@ from pymongo.results import UpdateResult, DeleteResult
 
 from .data_types import Relations, Types
 from .exceptions import DocumentNotFound
-
+from dateutil.parser import parse as date_parser
+from dateutil import tz
 
 class BaseModel:
     """
@@ -168,14 +169,14 @@ class BaseModel:
 
                 elif fields[name] == Types.ISODate:
                     if isinstance(param, str):
-                        query[name] = datetime.strptime(param[:19], "%Y-%m-%dT%H:%M:%S")
+                        query[name] = date_parser(param[:19])
                     else:
                         if isinstance(param, dict):
                             n_param = dict()
                             for k, v in param.items():
                                 if k in ["$gt", "$gte", "$lt", "$lte", "$ne", "$eq"]:
                                     if isinstance(v, str):
-                                        n_param[k] = datetime.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")
+                                        n_param[k] = date_parser(param[:19])
                                     elif isinstance(v, datetime):
                                         n_param[k] = v
                                     else:
